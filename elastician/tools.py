@@ -121,18 +121,24 @@ def copy_func(index, es_target, es_source):
 @click.option('--preserve-ids/--no-preserve-ids', default=False)
 def ingest(path, index, hosts, preserve_index, preserve_ids):
     es = Elasticsearch(hosts=get_es_hosts(hosts))
-    with gzip.open(path, mode='rb') as f:
-        objs = [json.loads(line.decode(encoding='UTF-8')) for line in f]
-        it = helpers.streaming_bulk(es, (dict(
-            _index=index if not preserve_index else o['_index'],
-            _type='_doc',
-            _id=None if not preserve_ids else o['_id'],
-            _op_type="index",
-            **(o['_source'])) for o in objs))
-        for ok, response in it:
-            if not ok:
-                click.echo(f'Error indexing to {index}: response is {response}', err=True)
+    actions = parse_data(path, index, preserve_index, preserve_ids)
+    it = helpers.streaming_bulk(es, actions)
+    for ok, response in it:
+        if not ok:
+            click.echo(f'Error indexing to {index}: response is {response}', err=True)
 
+
+def parse_data(path, index, preserve_index, preserve_ids):
+     with gzip.open(path, mode='rb') as f:
+        for line in f:
+            obj = json.loads(line.decode(encoding='UTF-8'))
+            yield dict(
+                _index=index if not preserve_index else obj['_index'],
+                _type='_doc',
+                _id=None if not preserve_ids else obj['_id'],
+                _op_type="index",
+                **(obj['_source'])
+            )
 
 if __name__ == '__main__':
     cli()
